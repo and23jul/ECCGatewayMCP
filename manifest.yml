@@ -1,0 +1,27 @@
+# Create the service instances once, before the first push:
+#   cf create-service xsuaa application XSUAA-application-ECCGatewayMCP -c xs-security.json
+#   cf create-service connectivity lite CONN-lite-ECCGatewayMCP   # needed: Gateway-x96-SSO is OnPremise via Cloud Connector
+# DEST-lite-Restricted already exists and is reused. It must be in the target space (or shared into it)
+# and must contain the Gateway-x96-SSO destination.
+# Then: cf push
+applications:
+  - name: ecc-gateway-mcp
+    memory: 256M
+    instances: 1 # keep at 1: MCP sessions (needed for draft confirmation) are held in memory
+    buildpacks:
+      - python_buildpack
+    command: python -m ecc_gateway_mcp
+    health-check-type: port
+    services:
+      - XSUAA-application-ECCGatewayMCP
+      - DEST-lite-Restricted
+      - CONN-lite-ECCGatewayMCP
+    env:
+      DESTINATION_NAME: Gateway-x96-SSO
+      # OData mapping; defaults match API_SALES_ORDER_SRV. Adjust to the ECC Gateway service in use.
+      SALES_SERVICE_PATH: /sap/opu/odata/sap/API_SALES_ORDER_SRV
+      SALES_ENTITY_SET: A_SalesOrder
+      # Draft creation stays disabled until these are set:
+      # SALES_DRAFT_ENTITY_SET: <entity set that creates a draft>
+      # SALES_DRAFT_DEFAULTS: '{"SalesOrderType": "OR", "SalesOrganization": "1010"}'
+      # SALES_DRAFT_ID_FIELD: SalesOrder

@@ -1,0 +1,32 @@
+{
+  "xsappname": "ecc-gateway-mcp",
+  "tenant-mode": "dedicated",
+  "scopes": [
+    { "name": "$XSAPPNAME.SalesOrderRead", "description": "Read sales orders" },
+    { "name": "$XSAPPNAME.SalesOrderCreate", "description": "Create draft sales orders" }
+  ],
+  "role-templates": [
+    {
+      "name": "ZROL-APP-ECCGatewayMCP-ViewSalesOrders",
+      "description": "Read sales orders through the sap-sales MCP server",
+      "scope-references": ["$XSAPPNAME.SalesOrderRead"]
+    },
+    {
+      "name": "ZROL-APP-ECCGatewayMCP-CreateSalesOrders",
+      "description": "Read sales orders and create drafts through the sap-sales MCP server",
+      "scope-references": ["$XSAPPNAME.SalesOrderRead", "$XSAPPNAME.SalesOrderCreate"]
+    }
+  ],
+  "role-collections": [
+    {
+      "name": "ZROC-APP-APP-ECCGatewayMCP-SalesSupport",
+      "description": "View sales orders through the sap-sales MCP server",
+      "role-template-references": ["$XSAPPNAME.ZROL-APP-ECCGatewayMCP-ViewSalesOrders"]
+    },
+    {
+      "name": "ZROC-APP-ECCGatewayMCP-SalesExecutive",
+      "description": "View sales orders and create drafts through the sap-sales MCP server",
+      "role-template-references": ["$XSAPPNAME.ZROL-APP-ECCGatewayMCP-CreateSalesOrders"]
+    }
+  ]
+}
