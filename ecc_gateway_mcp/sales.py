@@ -1,32 +1,26 @@
-"""Sales order operations and the mapping between the tool contract and the backend OData model.
+"""Sales read operations: mapping between the tool contract and ZGW_ECCMCP_SALES_SRV.
 
-All backend field names live in this module so adapting to a different ECC Gateway service
-only touches this file (plus the SALES_* settings).
+Backend facts (metadata/Sales.edmx.xml, OData V2, read-only):
+  SOHeadSet  key SONumber;            fields SONumber, SOCustomer  (SOCustomer filterable)
+  SOItemSet  key SONumber+SOItemNo;   fields SONumber, SOItemNo, MaterialNo  (none filterable)
+  No navigation between head and item; both sets are pageable=false.
+All backend field names live in this module so adapting to a different service touches only here.
 """
 
 from __future__ import annotations
 
-import base64
-import json
-from decimal import Decimal
 from typing import Any
 
 from .config import Settings
-from .errors import GatewayError
 from .gateway import GatewayClient
-from .models import DraftItem, DraftResult, OrderStatus, SalesOrderPage, SalesOrderSummary
-
-_SELECT = (
-    "SalesOrder,SoldToParty,OverallSDProcessStatus,OverallSDDocumentRejectionSts,"
-    "TotalNetAmount,TransactionCurrency"
+from .models import (
+    CustomerId,
+    SalesOrder,
+    SalesOrderDetail,
+    SalesOrderItem,
+    SalesOrderPage,
 )
-
-# contract status -> OData $filter. 'C' = completely processed / completely rejected.
-_STATUS_FILTER: dict[str, str] = {
-    "open": "OverallSDProcessStatus ne 'C' and OverallSDDocumentRejectionSts ne 'C'",
-    "completed": "OverallSDProcessStatus eq 'C' and OverallSDDocumentRejectionSts ne 'C'",
-    "rejected": "OverallSDDocumentRejectionSts eq 'C'",
-}
+from .paging import decode_page_token, paginate
 
 
 def pad_number(value: str) -> str:
@@ -34,34 +28,19 @@ def pad_number(value: str) -> str:
     return value.zfill(10) if value.isdigit() else value
 
 
-def _status(row: dict[str, Any]) -> str:
-    if row.get("OverallSDDocumentRejectionSts") == "C":
-        return "rejected"
-    return "completed" if row.get("OverallSDProcessStatus") == "C" else "open"
-
-
-def _summary(row: dict[str, Any]) -> SalesOrderSummary:
-    return SalesOrderSummary(
-        sales_order_id=row["SalesOrder"],
-        customer_id=row.get("SoldToParty") or "",
-        status=_status(row),
-        net_amount=float(Decimal(row.get("TotalNetAmount") or "0")),  # OData V2 sends decimals as strings
-        currency=row.get("TransactionCurrency") or "",
+def _head(row: dict[str, Any]) -> SalesOrder:
+    return SalesOrder(
+        sales_order_id=row["SONumber"],
+        customer_id=row.get("SOCustomer") or "",
     )
 
 
-def encode_page_token(skip: int) -> str:
-    return base64.urlsafe_b64encode(json.dumps({"skip": skip}).encode()).decode()
-
-
-def decode_page_token(token: str) -> int:
-    try:
-        skip = json.loads(base64.urlsafe_b64decode(token.encode()))["skip"]
-        if isinstance(skip, int) and skip >= 0:
-            return skip
-    except (ValueError, KeyError, TypeError):
-        pass
-    raise GatewayError("INVALID_INPUT", "page_token is not valid.")
+def _item(row: dict[str, Any]) -> SalesOrderItem:
+    return SalesOrderItem(
+        sales_order_id=row["SONumber"],
+        item_number=row["SOItemNo"],
+        material_id=row.get("MaterialNo") or "",
+    )
 
 
 class SalesService:
@@ -69,58 +48,37 @@ class SalesService:
         self._s = settings
         self._gw = gateway
 
-    async def get_order(self, jwt: str, sales_order_id: str) -> SalesOrderSummary:
+    async def get_order(self, jwt: str, sales_order_id: str) -> SalesOrderDetail:
         key = pad_number(sales_order_id)
-        path = f"{self._s.sales_service_path}/{self._s.sales_entity_set}('{key}')"
-        return _summary(await self._gw.get(jwt, path, {"$select": _SELECT}))
-
-    async def list_orders(
-        self, jwt: str, customer_id: str | None, status: OrderStatus | None, limit: int, page_token: str | None
-    ) -> SalesOrderPage:
-        skip = decode_page_token(page_token) if page_token else 0
-        filters = []
-        if customer_id:
-            filters.append(f"SoldToParty eq '{pad_number(customer_id)}'")
-        if status:
-            filters.append(f"({_STATUS_FILTER[status]})")
-        params = {
-            "$select": _SELECT,
-            "$orderby": "SalesOrder desc",
-            "$top": str(limit + 1),  # one extra row tells us whether another page exists
-            "$skip": str(skip),
-        }
-        if filters:
-            params["$filter"] = " and ".join(filters)
-
-        data = await self._gw.get(jwt, f"{self._s.sales_service_path}/{self._s.sales_entity_set}", params)
-        rows = data.get("results", [])
-        has_more = len(rows) > limit
-        return SalesOrderPage(
-            items=[_summary(r) for r in rows[:limit]],
-            next_page_token=encode_page_token(skip + limit) if has_more else None,
+        head_path = f"{self._s.sales_service_path}/{self._s.sales_head_entity_set}('{key}')"
+        head = await self._gw.get(jwt, head_path)
+        items = await self._items_for(jwt, key)
+        return SalesOrderDetail(
+            sales_order_id=head["SONumber"],
+            customer_id=head.get("SOCustomer") or "",
+            items=items,
         )
 
-    async def create_draft(self, jwt: str, customer_id: str, items: list[DraftItem]) -> DraftResult:
-        if not self._s.draft_entity_set:
-            raise GatewayError(
-                "BACKEND_NOT_CONFIGURED",
-                "Draft creation is not configured (set SALES_DRAFT_ENTITY_SET).",
-            )
-        body = {
-            **self._s.draft_defaults,
-            "SoldToParty": pad_number(customer_id),
-            "to_Item": [
-                {
-                    "Material": i.material_id,
-                    "RequestedQuantity": str(i.quantity),
-                    "RequestedQuantityUnit": i.unit,
-                }
-                for i in items
-            ],
-        }
-        root = self._s.sales_service_path
-        data = await self._gw.post(jwt, root, f"{root}/{self._s.draft_entity_set}", body)
-        draft_id = data.get(self._s.draft_id_field)
-        if not draft_id:
-            raise GatewayError("BACKEND_ERROR", "Backend did not return a draft identifier.")
-        return DraftResult(draft_id=str(draft_id), status="draft")
+    async def list_items(self, jwt: str, sales_order_id: str) -> list[SalesOrderItem]:
+        return await self._items_for(jwt, pad_number(sales_order_id))
+
+    async def list_orders(
+        self, jwt: str, customer_id: str | None, limit: int, page_token: str | None
+    ) -> SalesOrderPage:
+        skip = decode_page_token(page_token) if page_token else 0
+        params: dict[str, str] = {}
+        if customer_id:
+            # SOCustomer is the only server-side filterable field on SOHeadSet.
+            params["$filter"] = f"SOCustomer eq '{pad_number(customer_id)}'"
+        path = f"{self._s.sales_service_path}/{self._s.sales_head_entity_set}"
+        rows = await self._gw.get_collection(jwt, path, params or None)
+        rows = rows[: self._s.max_backend_rows]
+        window, next_token = paginate(rows, skip, limit)
+        return SalesOrderPage(items=[_head(r) for r in window], next_page_token=next_token)
+
+    async def _items_for(self, jwt: str, padded_so: str) -> list[SalesOrderItem]:
+        # SOItemSet has no filterable fields, so read the set and filter by key in-server.
+        path = f"{self._s.sales_service_path}/{self._s.sales_item_entity_set}"
+        rows = await self._gw.get_collection(jwt, path)
+        rows = rows[: self._s.max_backend_rows]
+        return [_item(r) for r in rows if r.get("SONumber") == padded_so]

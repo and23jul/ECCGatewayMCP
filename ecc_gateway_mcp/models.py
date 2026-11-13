@@ -1,45 +1,74 @@
-"""Input/output shapes of the `sap-sales` tool contract."""
+"""Input/output shapes of the read-only `ecc-gateway` tool contract.
+
+Field names mirror the two ECC Gateway OData V2 services (see metadata/*.edmx.xml):
+  ZGW_ECCMCP_SALES_SRV      -> SOHead(SONumber, SOCustomer), SOItem(SONumber, SOItemNo, MaterialNo)
+  ZGW_ECCMCP_PURCHASING_SRV -> POHead(PONumber, POVendor),   POItem(PONumber, POItemNo, MaterialNo)
+"""
 
 from __future__ import annotations
 
-from typing import Annotated, Literal
+from typing import Annotated
 
 from pydantic import BaseModel, Field
 
+# SAP document / master-data keys are numeric strings up to the metadata MaxLength.
 SalesOrderId = Annotated[
-    str, Field(pattern=r"^[0-9]{1,10}$", description="SAP sales order number (digits, up to 10).")
+    str, Field(pattern=r"^[0-9]{1,10}$", description="SAP sales document number (digits, up to 10).")
 ]
 CustomerId = Annotated[
     str, Field(pattern=r"^[A-Za-z0-9]{1,10}$", description="SAP customer number.")
 ]
-OrderStatus = Literal["open", "completed", "rejected"]
+PurchaseOrderId = Annotated[
+    str, Field(pattern=r"^[0-9]{1,10}$", description="SAP purchasing document number (digits, up to 10).")
+]
+VendorId = Annotated[
+    str, Field(pattern=r"^[A-Za-z0-9]{1,10}$", description="SAP vendor number.")
+]
 
 
-class SalesOrderSummary(BaseModel):
+# --- Sales (ZGW_ECCMCP_SALES_SRV) ---------------------------------------------------------------
+
+class SalesOrderItem(BaseModel):
+    sales_order_id: str  # SONumber
+    item_number: str     # SOItemNo
+    material_id: str      # MaterialNo
+
+
+class SalesOrder(BaseModel):
+    sales_order_id: str  # SONumber
+    customer_id: str     # SOCustomer
+
+
+class SalesOrderDetail(BaseModel):
     sales_order_id: str
     customer_id: str
-    status: str
-    net_amount: float
-    currency: str
+    items: list[SalesOrderItem]
 
 
 class SalesOrderPage(BaseModel):
-    items: list[SalesOrderSummary]
+    items: list[SalesOrder]
     next_page_token: str | None
 
 
-class DraftItem(BaseModel):
-    material_id: str = Field(pattern=r"^[A-Za-z0-9_\-]{1,40}$", description="Material number.")
-    quantity: float = Field(gt=0)
-    unit: str = Field(pattern=r"^[A-Za-z0-9]{1,3}$", description="Unit of measure, e.g. PC.")
+# --- Purchasing (ZGW_ECCMCP_PURCHASING_SRV) -----------------------------------------------------
+
+class PurchaseOrderItem(BaseModel):
+    purchase_order_id: str  # PONumber
+    item_number: str        # POItemNo
+    material_id: str        # MaterialNo
 
 
-class DraftResult(BaseModel):
-    draft_id: str
-    status: str
+class PurchaseOrder(BaseModel):
+    purchase_order_id: str  # PONumber
+    vendor_id: str          # POVendor
 
 
-class _Confirmation(BaseModel):
-    """Elicitation form shown to the user before a draft is created."""
+class PurchaseOrderDetail(BaseModel):
+    purchase_order_id: str
+    vendor_id: str
+    items: list[PurchaseOrderItem]
 
-    confirm: bool = Field(default=False, description="Create this draft sales order?")
+
+class PurchaseOrderPage(BaseModel):
+    items: list[PurchaseOrder]
+    next_page_token: str | None

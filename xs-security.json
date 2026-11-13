@@ -2,31 +2,41 @@
   "xsappname": "ecc-gateway-mcp",
   "tenant-mode": "dedicated",
   "scopes": [
-    { "name": "$XSAPPNAME.SalesOrderRead", "description": "Read sales orders" },
-    { "name": "$XSAPPNAME.SalesOrderCreate", "description": "Create draft sales orders" }
+    { "name": "$XSAPPNAME.SalesRead", "description": "Read sales documents" },
+    { "name": "$XSAPPNAME.PurchasingRead", "description": "Read purchasing documents" }
   ],
   "role-templates": [
     {
-      "name": "ZROL-APP-ECCGatewayMCP-ViewSalesOrders",
-      "description": "Read sales orders through the sap-sales MCP server",
-      "scope-references": ["$XSAPPNAME.SalesOrderRead"]
+      "name": "ZROL-APP-ECCGatewayMCP-ViewSales",
+      "description": "Read sales documents through the ecc-gateway MCP server",
+      "scope-references": ["$XSAPPNAME.SalesRead"]
     },
     {
-      "name": "ZROL-APP-ECCGatewayMCP-CreateSalesOrders",
-      "description": "Read sales orders and create drafts through the sap-sales MCP server",
-      "scope-references": ["$XSAPPNAME.SalesOrderRead", "$XSAPPNAME.SalesOrderCreate"]
+      "name": "ZROL-APP-ECCGatewayMCP-ViewPurchasing",
+      "description": "Read purchasing documents through the ecc-gateway MCP server",
+      "scope-references": ["$XSAPPNAME.PurchasingRead"]
+    },
+    {
+      "name": "ZROL-APP-ECCGatewayMCP-ViewAll",
+      "description": "Read sales and purchasing documents through the ecc-gateway MCP server",
+      "scope-references": ["$XSAPPNAME.SalesRead", "$XSAPPNAME.PurchasingRead"]
     }
   ],
   "role-collections": [
     {
-      "name": "ZROC-APP-APP-ECCGatewayMCP-SalesSupport",
-      "description": "View sales orders through the sap-sales MCP server",
-      "role-template-references": ["$XSAPPNAME.ZROL-APP-ECCGatewayMCP-ViewSalesOrders"]
+      "name": "ZROC-APP-ECCGatewayMCP-SalesViewer",
+      "description": "View sales documents through the ecc-gateway MCP server",
+      "role-template-references": ["$XSAPPNAME.ZROL-APP-ECCGatewayMCP-ViewSales"]
     },
     {
-      "name": "ZROC-APP-ECCGatewayMCP-SalesExecutive",
-      "description": "View sales orders and create drafts through the sap-sales MCP server",
-      "role-template-references": ["$XSAPPNAME.ZROL-APP-ECCGatewayMCP-CreateSalesOrders"]
+      "name": "ZROC-APP-ECCGatewayMCP-PurchasingViewer",
+      "description": "View purchasing documents through the ecc-gateway MCP server",
+      "role-template-references": ["$XSAPPNAME.ZROL-APP-ECCGatewayMCP-ViewPurchasing"]
+    },
+    {
+      "name": "ZROC-APP-ECCGatewayMCP-Viewer",
+      "description": "View sales and purchasing documents through the ecc-gateway MCP server",
+      "role-template-references": ["$XSAPPNAME.ZROL-APP-ECCGatewayMCP-ViewAll"]
     }
   ]
 }

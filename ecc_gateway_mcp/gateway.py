@@ -1,4 +1,4 @@
-"""Minimal OData V2 client that calls the backend through the resolved destination."""
+"""Minimal read-only OData V2 client that calls the backend through the resolved destination."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ class GatewayClient:
         self._resolver = resolver
 
     def _client(self, target: ResolvedTarget) -> httpx.AsyncClient:
-        # A fresh client per call: the cookie jar (SAP session / CSRF) must never be shared between users.
+        # A fresh client per call: the cookie jar (SAP session) must never be shared between users.
         return httpx.AsyncClient(
             base_url=target.base_url,
             headers={"Accept": "application/json", **target.headers},
@@ -31,21 +31,22 @@ class GatewayClient:
         )
 
     async def get(self, user_jwt: str, path: str, params: dict[str, str] | None = None) -> dict[str, Any]:
+        """Return the OData V2 payload under `d` (a single entity, or {"results": [...]})."""
         target = await self._resolver.resolve(user_jwt)
         async with self._client(target) as client:
             resp = await client.get(path, params={"$format": "json", **(params or {})})
         return self._parse(resp)
 
-    async def post(self, user_jwt: str, service_root: str, path: str, body: dict[str, Any]) -> dict[str, Any]:
-        target = await self._resolver.resolve(user_jwt)
-        async with self._client(target) as client:
-            fetch = await client.get(service_root, headers={"X-CSRF-Token": "Fetch"})
-            csrf = fetch.headers.get("x-csrf-token")
-            if fetch.status_code >= 400 or not csrf:
-                self._parse(fetch)  # raises a mapped error for 401/403
-                raise GatewayError("BACKEND_ERROR", "Backend did not issue a CSRF token.")
-            resp = await client.post(path, json=body, headers={"X-CSRF-Token": csrf})
-        return self._parse(resp)
+    async def get_collection(
+        self, user_jwt: str, path: str, params: dict[str, str] | None = None
+    ) -> list[dict[str, Any]]:
+        """Return the rows of an entity-set read as a list."""
+        data = await self.get(user_jwt, path, params)
+        results = data.get("results")
+        if results is None:
+            # A single entity read through a collection path still arrives under `d`.
+            return [data] if data else []
+        return results
 
     @staticmethod
     def _parse(resp: httpx.Response) -> dict[str, Any]:

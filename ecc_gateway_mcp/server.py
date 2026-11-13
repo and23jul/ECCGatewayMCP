@@ -1,4 +1,4 @@
-"""FastMCP server `sap-sales`: tools, auth wiring and entry point."""
+"""FastMCP server `ecc-gateway`: read-only Sales and Purchasing tools, auth wiring, entry point."""
 
 from __future__ import annotations
 
@@ -7,47 +7,50 @@ from typing import Annotated
 
 from mcp import types
 from mcp.server.auth.settings import AuthSettings
-from mcp.server.fastmcp import Context, FastMCP
+from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
 from .auth import Authorizer, XsuaaTokenVerifier
 from .config import Settings, load_settings
 from .destination import DestinationResolver
-from .errors import GatewayError
 from .gateway import GatewayClient
 from .models import (
     CustomerId,
-    DraftItem,
-    DraftResult,
-    OrderStatus,
+    PurchaseOrderDetail,
+    PurchaseOrderId,
+    PurchaseOrderItem,
+    PurchaseOrderPage,
+    SalesOrderDetail,
     SalesOrderId,
+    SalesOrderItem,
     SalesOrderPage,
-    SalesOrderSummary,
-    _Confirmation,
+    VendorId,
 )
+from .purchasing import PurchasingService
 from .sales import SalesService
 
 logger = logging.getLogger(__name__)
 
+# Every tool here is a read; the backend services are creatable/updatable/deletable = false.
 _READ_ONLY = types.ToolAnnotations(
     readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True
 )
-_CREATE = types.ToolAnnotations(
-    readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=True
-)
+
+_Limit = Annotated[int, Field(ge=1, le=50, description="Maximum items to return.")]
+_PageToken = Annotated[str | None, Field(description="next_page_token from a previous call.")]
 
 
 def create_server(settings: Settings, gateway: GatewayClient | None = None) -> FastMCP:
     gateway = gateway or GatewayClient(DestinationResolver(settings))
     sales = SalesService(settings, gateway)
+    purchasing = PurchasingService(settings, gateway)
     authz = Authorizer(settings.xsuaa.xsappname)
 
     mcp = FastMCP(
-        "sap-sales",
+        "ecc-gateway",
         host="0.0.0.0",
         port=settings.port,
-        # Stateful sessions are required for confirmation (elicitation) in create_sales_order_draft.
-        stateless_http=False,
+        stateless_http=True,
         json_response=False,
         token_verifier=XsuaaTokenVerifier(settings.xsuaa),
         auth=AuthSettings(
@@ -58,52 +61,61 @@ def create_server(settings: Settings, gateway: GatewayClient | None = None) -> F
         ),
     )
 
-    @mcp.tool(annotations=_READ_ONLY)
-    async def get_sales_order(sales_order_id: SalesOrderId) -> SalesOrderSummary:
-        """Read one sales order summary.
+    # --- Sales (ZGW_ECCMCP_SALES_SRV) -----------------------------------------------------------
 
-        Errors: NOT_FOUND (order does not exist or is not visible to caller),
-        FORBIDDEN (caller lacks SalesOrderRead permission).
+    @mcp.tool(annotations=_READ_ONLY)
+    async def get_sales_order(sales_order_id: SalesOrderId) -> SalesOrderDetail:
+        """Read one sales document (customer and its items).
+
+        Errors: NOT_FOUND (document does not exist or is not visible to caller),
+        FORBIDDEN (caller lacks SalesRead permission).
         """
-        jwt = authz.require("SalesOrderRead")
+        jwt = authz.require("SalesRead")
         return await sales.get_order(jwt, sales_order_id)
 
     @mcp.tool(annotations=_READ_ONLY)
     async def list_sales_orders(
         customer_id: CustomerId | None = None,
-        status: OrderStatus | None = None,
-        limit: Annotated[int, Field(ge=1, le=50, description="Maximum items to return.")] = 10,
-        page_token: Annotated[str | None, Field(description="next_page_token of a previous call.")] = None,
+        limit: _Limit = 10,
+        page_token: _PageToken = None,
     ) -> SalesOrderPage:
-        """Find sales orders using supported filters."""
-        jwt = authz.require("SalesOrderRead")
-        return await sales.list_orders(jwt, customer_id, status, limit, page_token)
+        """List sales documents, optionally filtered by customer."""
+        jwt = authz.require("SalesRead")
+        return await sales.list_orders(jwt, customer_id, limit, page_token)
 
-    @mcp.tool(annotations=_CREATE)
-    async def create_sales_order_draft(
-        customer_id: CustomerId,
-        items: Annotated[list[DraftItem], Field(min_length=1, max_length=100)],
-        ctx: Context,
-    ) -> DraftResult:
-        """Create a draft sales order for review; does not submit it. Asks the user to confirm first."""
-        jwt = authz.require("SalesOrderCreate")
+    @mcp.tool(annotations=_READ_ONLY)
+    async def get_sales_order_items(sales_order_id: SalesOrderId) -> list[SalesOrderItem]:
+        """List the item lines of one sales document."""
+        jwt = authz.require("SalesRead")
+        return await sales.list_items(jwt, sales_order_id)
 
-        # confirmation_required: never create anything unless the user explicitly said yes.
-        if not ctx.session.check_client_capability(
-            types.ClientCapabilities(elicitation=types.ElicitationCapability())
-        ):
-            raise GatewayError(
-                "CONFIRMATION_REQUIRED",
-                "This client cannot ask the user for confirmation, so no draft was created.",
-            )
-        lines = "\n".join(f"- {i.quantity:g} {i.unit} of {i.material_id}" for i in items)
-        answer = await ctx.elicit(
-            f"Create a draft sales order for customer {customer_id}?\n{lines}", _Confirmation
-        )
-        if answer.action != "accept" or not answer.data.confirm:
-            raise GatewayError("CANCELLED", "The user did not confirm; no draft was created.")
+    # --- Purchasing (ZGW_ECCMCP_PURCHASING_SRV) -------------------------------------------------
 
-        return await sales.create_draft(jwt, customer_id, items)
+    @mcp.tool(annotations=_READ_ONLY)
+    async def get_purchase_order(purchase_order_id: PurchaseOrderId) -> PurchaseOrderDetail:
+        """Read one purchasing document (vendor and its items).
+
+        Errors: NOT_FOUND (document does not exist or is not visible to caller),
+        FORBIDDEN (caller lacks PurchasingRead permission).
+        """
+        jwt = authz.require("PurchasingRead")
+        return await purchasing.get_order(jwt, purchase_order_id)
+
+    @mcp.tool(annotations=_READ_ONLY)
+    async def list_purchase_orders(
+        vendor_id: VendorId | None = None,
+        limit: _Limit = 10,
+        page_token: _PageToken = None,
+    ) -> PurchaseOrderPage:
+        """List purchasing documents, optionally filtered by vendor."""
+        jwt = authz.require("PurchasingRead")
+        return await purchasing.list_orders(jwt, vendor_id, limit, page_token)
+
+    @mcp.tool(annotations=_READ_ONLY)
+    async def get_purchase_order_items(purchase_order_id: PurchaseOrderId) -> list[PurchaseOrderItem]:
+        """List the item lines of one purchasing document."""
+        jwt = authz.require("PurchasingRead")
+        return await purchasing.list_items(jwt, purchase_order_id)
 
     return mcp
 
