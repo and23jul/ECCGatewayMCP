@@ -1,0 +1,11 @@
+{
+  "name": "ecc-gateway-chat-approuter",
+  "engines": { "node": "24.22.1" },
+  "dependencies": {
+    "@sap/approuter": "^16"
+  },
+  "scripts": {
+    "start": "node node_modules/@sap/approuter/approuter.js",
+    "test": "node --test"
+  }
+}

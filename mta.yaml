@@ -1,0 +1,151 @@
+# ECC Gateway chat front-end: UI5 app (HTML5 Application Repository) + dedicated approuter.
+# The Python MCP server (ecc_gateway_mcp/) is NOT part of this MTA; it keeps deploying with
+# `cf push` and manifest.yml.
+#
+# Request path:  browser -> approuter (XSUAA login) -> destination AWSService-CTC-NoSSO -> workflow
+# The approuter route /workflow/* is a placeholder until the workflow URL is known (see
+# approuter/xs-app.json and ui/webapp/xs-app.json: change the destination or `target`).
+#
+# ONE-TIME PREREQUISITES (this MTA cannot do them):
+#   1. Update the shared XSUAA instance so the approuter's redirect URI is allowed (the instance
+#      is bound as existing-service below, so the MTA never applies xs-security.json):
+#        cf update-service XSUAA-application-ECCGatewayMCP -c xs-security.json
+#   2. Create the destination AWSService-CTC-NoSSO manually in the BTP cockpit
+#      (Connectivity > Destinations, subaccount level): URL = workflow endpoint, authentication
+#      OAuth2ClientCredentials (client id/secret/token URL of the workflow's OAuth server).
+#      If the workflow host is only reachable through the Cloud Connector, set Proxy Type
+#      OnPremise, add the host to the Cloud Connector, and enable the connectivity binding in
+#      the approuter module + resource below.
+#   3. The existing instances below must exist in the target space (same space as
+#      DEST-lite-Restricted): XSUAA-application-ECCGatewayMCP, DEST-lite-Restricted,
+#      HTML5-app_runtime-Restricted.
+#   4. Assign a role collection (ZROC-APP-ECCGatewayMCP-*) to every chat user: the /workflow
+#      route requires the SalesRead or PurchasingRead scope.
+#
+# BUILD + DEPLOY (Windows, no GNU make: `mbt build` fails with "make: executable file not found",
+# so build every module in ONE `mbt module-build` call, then deploy the archive):
+#   cd <repo root>
+#   mbt module-build -m ecc-gateway-chat-ui -m ecc-gateway-chat-ui-deployer -m ecc-gateway-chat-approuter -a -g
+#   cf deploy mta_archives/ecc-gateway-chat_1.0.0.mtar -f
+#   (if module-build output lands elsewhere, see the "Windows build" note in the
+#    BTP Compliance Scanner CLAUDE.md for the assembly steps that worked there)
+#
+# GOTCHA (same as BTP Compliance Scanner): ui/resources/ is never cleaned between builds and the
+# deployer packages every zip it finds there. Keep the zip name stable (ecc-gateway-chat-ui.zip);
+# if you ever rename it, delete ui/resources/ first or a phantom app version gets published.
+#
+# Assumed landscape: eu10-004 (domain below). Change `domain` if the space lives elsewhere, and
+# keep the redirect URI in xs-security.json in sync with host + domain.
+
+_schema-version: '3.3'
+ID: ecc-gateway-chat
+version: 1.0.0
+description: >
+  Chat front-end for the ECC Gateway assistant. A UI5 app delivered via the HTML5 Application
+  Repository and served by a dedicated approuter that forwards the user's prompt to the
+  workflow API through the subaccount destination AWSService-CTC-NoSSO.
+
+parameters:
+  enable-parallel-deployments: true
+
+modules:
+  # UI5 chat app, built as static HTML5 content (UI5 is loaded from the OpenUI5 CDN, so "build"
+  # just stages webapp/ without the test folder) and zipped for the deployer below.
+  - name: ecc-gateway-chat-ui
+    type: html5
+    path: ui
+    build-parameters:
+      builder: custom
+      commands:
+        - npm ci
+        - npm run build
+        - npm run zip
+      supported-platforms: []
+      build-result: dist
+
+  # Uploads the zip into the HTML5 Application Repository app-host instance. The approuter
+  # serves it through its own app-runtime binding and the catch-all html5-apps-repo-rt route.
+  - name: ecc-gateway-chat-ui-deployer
+    type: com.sap.application.content
+    path: ui
+    requires:
+      - name: ecc-gateway-chat-html5-repo-host
+        parameters:
+          content-target: true
+          service-key:
+            name: SK-OAuth-AppHost
+      - name: ecc-gateway-chat-xsuaa
+        parameters:
+          service-key:
+            name: SK-OAuth-XSUAA
+      - name: ecc-gateway-chat-destination
+        parameters:
+          service-key:
+            name: SK-OAuth-Destination
+    build-parameters:
+      build-result: resources
+      requires:
+        - artifacts:
+            - ecc-gateway-chat-ui.zip
+          name: ecc-gateway-chat-ui
+          target-path: resources/
+
+  # Dedicated standalone approuter. Same space as the app-host, so its html5-apps-repo-rt binding
+  # can serve the UI content. Shares the ECC Gateway XSUAA instance: the user's token already has
+  # the right audience and scopes, so it can later be forwarded to ecc-gateway-mcp unchanged.
+  - name: ecc-gateway-chat-approuter
+    type: nodejs
+    path: approuter
+    parameters:
+      host: ecc-gateway-chat
+      domain: cfapps.eu10-004.hana.ondemand.com
+      memory: 256M
+      disk-quota: 256M
+      buildpack: nodejs_buildpack
+    build-parameters:
+      builder: npm
+      ignore: ['node_modules', 'xs-app.test.js']
+    requires:
+      - name: ecc-gateway-chat-xsuaa
+      - name: ecc-gateway-chat-html5-runtime
+      - name: ecc-gateway-chat-destination
+      # Enable when AWSService-CTC-NoSSO is an OnPremise destination (Cloud Connector), and
+      # un-comment the matching resource below. Left off so a missing instance cannot fail the deploy.
+      # - name: ecc-gateway-chat-connectivity
+
+resources:
+  # Shared XSUAA instance of the ECC Gateway MCP server. existing-service: this MTA never owns,
+  # updates or deletes it (see prerequisite 1 for pushing xs-security.json changes).
+  - name: ecc-gateway-chat-xsuaa
+    type: org.cloudfoundry.existing-service
+    parameters:
+      service-name: XSUAA-application-ECCGatewayMCP
+
+  # HTML5 Application Repository, plan app-host: STORES the UI content (owned by this MTA).
+  - name: ecc-gateway-chat-html5-repo-host
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: html5-apps-repo
+      service-plan: app-host
+      service-name: HTML5-app_host-ECCGatewayMCP
+
+  # HTML5 Application Repository, plan app-runtime: lets the approuter SERVE the content.
+  # Shared instance in the Restricted space, owned outside this MTA.
+  - name: ecc-gateway-chat-html5-runtime
+    type: org.cloudfoundry.existing-service
+    parameters:
+      service-name: HTML5-app_runtime-Restricted
+
+  # Destination service, plan lite. Shared instance. AWSService-CTC-NoSSO is a subaccount-level
+  # destination (created manually), readable through any destination instance in the subaccount.
+  - name: ecc-gateway-chat-destination
+    type: org.cloudfoundry.existing-service
+    parameters:
+      service-name: DEST-lite-Restricted
+
+  # Connectivity service instance already used by the MCP server. Un-comment together with the
+  # approuter `requires` entry above if the workflow is reached through the Cloud Connector.
+  # - name: ecc-gateway-chat-connectivity
+  #   type: org.cloudfoundry.existing-service
+  #   parameters:
+  #     service-name: CONN-lite-ECCGatewayMCP

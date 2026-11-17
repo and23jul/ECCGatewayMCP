@@ -1,0 +1,6 @@
+specVersion: "4.0"
+metadata:
+  name: ecc-gateway-chat-ui
+type: application
+# No `framework:` block on purpose: index.html boots UI5 from the OpenUI5 CDN (same as the
+# BTP Compliance Scanner UI), so `ui5 serve` needs no framework download.

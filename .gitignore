@@ -2,3 +2,9 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+node_modules/
+ui/dist/
+ui/resources/
+ui/*.zip
+mta_archives/
+.*_mta_build_tmp

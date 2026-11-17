@@ -1,6 +1,11 @@
 {
   "xsappname": "ecc-gateway-mcp",
   "tenant-mode": "dedicated",
+  "oauth2-configuration": {
+    "redirect-uris": [
+      "https://ecc-gateway-chat.cfapps.eu10-004.hana.ondemand.com/**"
+    ]
+  },
   "scopes": [
     { "name": "$XSAPPNAME.SalesRead", "description": "Read sales documents" },
     { "name": "$XSAPPNAME.PurchasingRead", "description": "Read purchasing documents" }

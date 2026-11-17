@@ -1,0 +1,28 @@
+{
+  "authenticationMethod": "route",
+  "welcomeFile": "/apspcoeccgatewaychat-1.0.0/index.html",
+  "routes": [
+    {
+      "source": "^/workflow(/.*)?$",
+      "target": "$1",
+      "destination": "AWSService-CTC-NoSSO",
+      "authenticationType": "xsuaa",
+      "csrfProtection": true,
+      "scope": ["$XSAPPNAME.SalesRead", "$XSAPPNAME.PurchasingRead"]
+    },
+    {
+      "source": "^/[^/]+/workflow(/.*)?$",
+      "target": "$1",
+      "destination": "AWSService-CTC-NoSSO",
+      "authenticationType": "xsuaa",
+      "csrfProtection": true,
+      "scope": ["$XSAPPNAME.SalesRead", "$XSAPPNAME.PurchasingRead"]
+    },
+    {
+      "source": "^(.*)$",
+      "target": "$1",
+      "service": "html5-apps-repo-rt",
+      "authenticationType": "xsuaa"
+    }
+  ]
+}

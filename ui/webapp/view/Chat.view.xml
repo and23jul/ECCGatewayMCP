@@ -1,0 +1,135 @@
+<mvc:View
+  controllerName="aps.pco.eccgatewaychat.controller.Chat"
+  xmlns="sap.m"
+  xmlns:mvc="sap.ui.core.mvc"
+  xmlns:core="sap.ui.core"
+  displayBlock="true"
+  height="100%">
+
+  <Page id="chatPage" title="{i18n>appTitle}" enableScrolling="false">
+    <headerContent>
+      <Button
+        id="newChatButton"
+        icon="sap-icon://add"
+        text="{i18n>newChat}"
+        tooltip="{i18n>newChatTooltip}"
+        type="Transparent"
+        enabled="{= !${chat>/busy} }"
+        press=".onNewChat" />
+    </headerContent>
+
+    <content>
+      <VBox height="100%" renderType="Bare">
+
+        <MessageStrip
+          id="mockStrip"
+          text="{i18n>mockBanner}"
+          type="Information"
+          showIcon="true"
+          visible="{chat>/mock}"
+          class="sapUiTinyMargin" />
+
+        <MessageStrip
+          id="errorStrip"
+          text="{chat>/error}"
+          type="Error"
+          showIcon="true"
+          showCloseButton="true"
+          visible="{= !!${chat>/error} }"
+          close=".onCloseError"
+          class="sapUiTinyMargin" />
+
+        <ScrollContainer id="messageScroller" vertical="true" horizontal="false" height="100%">
+          <layoutData>
+            <FlexItemData growFactor="1" minHeight="0" />
+          </layoutData>
+
+          <!-- Empty state with example prompts -->
+          <VBox
+            id="emptyState"
+            alignItems="Center"
+            class="sapUiLargeMarginTop sapUiContentPadding"
+            visible="{= ${chat>/messages}.length === 0 }">
+            <core:Icon src="sap-icon://da" size="3rem" class="sapUiSmallMarginBottom" decorative="true" />
+            <Title text="{i18n>emptyTitle}" level="H2" titleStyle="H2" />
+            <Text text="{i18n>emptyText}" textAlign="Center" class="sapUiSmallMarginTopBottom" />
+            <FlexBox items="{chat>/suggestions}" wrap="Wrap" justifyContent="Center">
+              <Button text="{chat>text}" press=".onSuggestion" class="sapUiTinyMargin" />
+            </FlexBox>
+          </VBox>
+
+          <!-- Conversation. Text is bound to sap.m.Text only: never rendered as HTML. -->
+          <List
+            id="messageList"
+            items="{chat>/messages}"
+            showSeparators="None"
+            visible="{= ${chat>/messages}.length > 0 }"
+            noDataText=" ">
+            <CustomListItem class="eccChatItem">
+              <customData>
+                <core:CustomData key="role" value="{chat>role}" writeToDom="true" />
+              </customData>
+              <HBox alignItems="Start" class="sapUiSmallMargin">
+                <Avatar
+                  displaySize="XS"
+                  src="{= ${chat>role} === 'user' ? 'sap-icon://person-placeholder' : 'sap-icon://da' }"
+                  backgroundColor="{= ${chat>role} === 'user' ? 'Accent6' : 'Accent10' }"
+                  tooltip="{= ${chat>role} === 'user' ? ${i18n>roleUser} : ${i18n>roleAssistant} }"
+                  class="sapUiSmallMarginEnd" />
+                <VBox class="eccMsgBody">
+                  <HBox alignItems="Center">
+                    <Label
+                      design="Bold"
+                      text="{= ${chat>role} === 'user' ? ${i18n>roleUser} : ${i18n>roleAssistant} }" />
+                    <Text text="{chat>time}" class="sapUiTinyMarginBegin eccMsgTime" />
+                  </HBox>
+                  <Text text="{chat>text}" renderWhitespace="true" />
+                </VBox>
+              </HBox>
+            </CustomListItem>
+          </List>
+
+          <HBox
+            id="busyRow"
+            alignItems="Center"
+            class="sapUiSmallMargin"
+            visible="{chat>/busy}">
+            <BusyIndicator size="1.5rem" class="sapUiSmallMarginEnd" />
+            <Text text="{i18n>thinking}" />
+          </HBox>
+        </ScrollContainer>
+
+        <!-- Composer -->
+        <HBox alignItems="End" class="eccComposer sapUiSmallMargin">
+          <TextArea
+            id="promptInput"
+            value="{chat>/prompt}"
+            valueLiveUpdate="true"
+            liveChange=".onPromptChange"
+            placeholder="{i18n>promptPlaceholder}"
+            ariaLabelledBy="promptLabel"
+            rows="1"
+            growing="true"
+            growingMaxLines="6"
+            maxLength="4000"
+            width="100%">
+            <layoutData>
+              <FlexItemData growFactor="1" />
+            </layoutData>
+          </TextArea>
+          <Button
+            id="sendButton"
+            icon="sap-icon://paper-plane"
+            text="{i18n>send}"
+            tooltip="{i18n>sendTooltip}"
+            type="Emphasized"
+            class="sapUiTinyMarginBegin"
+            enabled="{= !${chat>/busy} &amp;&amp; ${chat>/canSend} }"
+            press=".onSend" />
+        </HBox>
+
+        <core:InvisibleText id="promptLabel" text="{i18n>promptLabel}" />
+      </VBox>
+    </content>
+  </Page>
+</mvc:View>

@@ -1,0 +1,53 @@
+{
+  "_version": "1.12.0",
+  "sap.app": {
+    "id": "aps.pco.eccgatewaychat",
+    "type": "application",
+    "title": "{{appTitle}}",
+    "description": "{{appDescription}}",
+    "i18n": "i18n/i18n.properties",
+    "applicationVersion": {
+      "version": "1.0.0"
+    }
+  },
+  "sap.ui": {
+    "technology": "UI5",
+    "deviceTypes": {
+      "desktop": true,
+      "tablet": true,
+      "phone": true
+    }
+  },
+  "sap.cloud": {
+    "service": "aps.pco.ecc_gateway_chat",
+    "public": true
+  },
+  "sap.ui5": {
+    "rootView": {
+      "viewName": "aps.pco.eccgatewaychat.view.Chat",
+      "type": "XML",
+      "id": "chat"
+    },
+    "dependencies": {
+      "minUI5Version": "1.120.0",
+      "libs": {
+        "sap.m": {},
+        "sap.ui.core": {}
+      }
+    },
+    "models": {
+      "i18n": {
+        "type": "sap.ui.model.resource.ResourceModel",
+        "settings": {
+          "bundleName": "aps.pco.eccgatewaychat.i18n.i18n",
+          "supportedLocales": [""],
+          "fallbackLocale": ""
+        }
+      }
+    },
+    "contentDensities": {
+      "compact": true,
+      "cozy": true
+    }
+  }
+}

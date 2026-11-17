@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>ECC Gateway Assistant - unit tests</title>
+  <link rel="stylesheet" href="https://sdk.openui5.org/resources/sap/ui/thirdparty/qunit-2.css" />
+  <script src="https://sdk.openui5.org/resources/sap/ui/thirdparty/qunit-2.js"></script>
+  <script>
+    QUnit.config.autostart = false;
+  </script>
+  <script
+    id="sap-ui-bootstrap"
+    src="https://sdk.openui5.org/resources/sap-ui-core.js"
+    data-sap-ui-resourceroots='{"aps.pco.eccgatewaychat": "../../"}'
+    data-sap-ui-compatVersion="edge"
+    data-sap-ui-async="true"
+    data-sap-ui-oninit="module:aps/pco/eccgatewaychat/test/unit/unitTests"
+  ></script>
+</head>
+<body>
+  <div id="qunit"></div>
+  <div id="qunit-fixture"></div>
+</body>
+</html>

@@ -1,0 +1,31 @@
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+/* One message row: avatar on the left, name + time above the text. */
+.eccChatItem {
+  border-bottom: 1px solid var(--sapList_BorderColor);
+}
+
+.eccChatItem[data-role="user"] {
+  background-color: var(--sapList_Background);
+}
+
+.eccChatItem[data-role="assistant"] {
+  background-color: var(--sapGroup_ContentBackground);
+}
+
+.eccMsgTime {
+  color: var(--sapContent_LabelColor);
+  font-size: var(--sapFontSmallSize);
+}
+
+.eccMsgBody {
+  max-width: 60rem;
+}
+
+.eccComposer {
+  border-top: 1px solid var(--sapToolbar_SeparatorColor);
+}

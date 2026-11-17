@@ -3,3 +3,11 @@ __pycache__/
 *.pyc
 .git/
 .kiro/
+# Chat UI + approuter are deployed separately through mta.yaml, never with the Python app.
+ui/
+approuter/
+mta.yaml
+mta_archives/
+node_modules/
+dist/
+resources/

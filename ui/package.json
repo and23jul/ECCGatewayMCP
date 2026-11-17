@@ -1,0 +1,18 @@
+{
+  "name": "ecc-gateway-chat-ui",
+  "version": "1.0.0",
+  "description": "UI5 chat front-end for the ECC Gateway assistant, delivered via HTML5 Application Repository and served by the ecc-gateway-chat-approuter.",
+  "private": true,
+  "scripts": {
+    "start": "ui5 serve",
+    "test": "qunit --require ./test/setup-node.js webapp/test/unit/ChatClient.js",
+    "build": "shx rm -rf dist && shx mkdir -p dist && shx cp -r webapp/. dist/ && shx rm -rf dist/test",
+    "zip": "cd dist && bestzip ../ecc-gateway-chat-ui.zip . && shx mv ../ecc-gateway-chat-ui.zip ."
+  },
+  "devDependencies": {
+    "@ui5/cli": "^4.0.0",
+    "bestzip": "^3.0.1",
+    "qunit": "^2.22.0",
+    "shx": "^0.4.0"
+  }
+}
